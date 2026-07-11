@@ -1,0 +1,9 @@
+{
+  "build": {
+    "type": "PYTHON",
+    "pythonVersion": "3.12"
+  },
+  "run": {
+    "command": "python main.py"
+  }
+}
