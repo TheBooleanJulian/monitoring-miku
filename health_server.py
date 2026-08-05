@@ -6,6 +6,7 @@ MonitoringMiku itself — the watcher needs watching too.
 
   GET /health  → 200 { "status": "ok", "uptime_seconds": N }
   GET /status  → 200 { "bots": [ { "key", "name", "status", "down_since" } ] }
+  GET /        → public landing page — fleet status + a link to /admin
 
 Also mounts the admin discovery-config UI (see admin_ui.py):
   GET  /admin?token=...           → HTML page for picking Zeabur projects/services
@@ -29,6 +30,7 @@ from config import HEALTH_SERVER_PORT
 from bot_registry import all_bots
 from monitor.health_monitor import _get_state
 from admin_ui import add_admin_routes
+from landing import landing_page
 
 log = logging.getLogger(__name__)
 _start_time = time.time()
@@ -73,6 +75,7 @@ async def _status(request: web.Request) -> web.Response:
 
 def _build_app() -> web.Application:
     app = web.Application()
+    app.router.add_get("/", landing_page)
     app.router.add_get("/health", _health)
     app.router.add_get("/status", _status)
     add_admin_routes(app)

@@ -23,6 +23,7 @@ MonitoringMiku is the ops layer for the TheBooleanJulian bot fleet. It **auto-di
 
 - **Auto-discovered bot registry** — every service in your admin-selected Zeabur projects is a monitored bot unless excluded; `/refresh_registry` re-scans on demand, and it also re-scans every `REGISTRY_REFRESH_INTERVAL` seconds automatically
 - **`/admin` web page** — pick which Zeabur projects to scan and untick non-bot services (databases, monitoring-miku itself, etc), instead of hand-editing CSV env vars
+- **Landing page (`/`)** — public fleet status dashboard with a link through to `/admin`
 - `/status` — live Zeabur deployment health for the whole fleet at a glance
 - `/logs <bot>` — tail recent log lines; auto-sends as `.txt` if over Telegram's message limit
 - `/debug <bot>` — Claude AI root-cause analysis combining recent logs and commits
@@ -84,7 +85,8 @@ monitoring-miku/
 ├── main.py                  # Entry point — async lifecycle, signal handling, middleware wiring
 ├── config.py                # Env vars + startup validation
 ├── logging_setup.py         # Rotating file handler + stdout stream
-├── health_server.py         # aiohttp /health + /status endpoints, mounts admin_ui
+├── health_server.py         # aiohttp /health + /status endpoints, mounts landing + admin_ui
+├── landing.py               # / — public fleet status dashboard, links to /admin
 ├── admin_ui.py              # /admin web page — pick Zeabur projects/services to scan
 ├── admin_config.py          # SQLite-backed discovery config (project_ids, excluded_service_ids)
 ├── bot_registry.py          # Auto-discovered bot registry (Zeabur + GitHub, SQLite-cached)

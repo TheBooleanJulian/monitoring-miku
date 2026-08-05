@@ -42,7 +42,7 @@ async def _page(request: web.Request) -> web.Response:
         return web.Response(text="ADMIN_TOKEN not configured on the server.", status=503)
     token = request.query.get("token")
     if not _token_ok(token):
-        return web.Response(text="Unauthorized — append ?token=<ADMIN_TOKEN> to the URL.", status=401)
+        return web.Response(text=_LOGIN_HTML, content_type="text/html", status=401)
     return web.Response(text=_HTML.replace("__TOKEN__", json.dumps(token)), content_type="text/html")
 
 
@@ -110,6 +110,37 @@ def add_admin_routes(app: web.Application) -> None:
     app.router.add_get("/admin/api/config", _api_get_config)
     app.router.add_post("/admin/api/config", _api_set_config)
 
+
+_LOGIN_HTML = """<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MonitoringMiku — Admin</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 420px; margin: 4rem auto; padding: 0 1rem; }
+  input { width: 100%; padding: 0.55rem; border-radius: 6px; border: 1px solid #8886; box-sizing: border-box; margin: 0.5rem 0; }
+  button { padding: 0.55rem 1.1rem; border-radius: 6px; border: none; background: #5b5bd6; color: white; font-size: 0.95rem; cursor: pointer; }
+</style>
+</head>
+<body>
+<h1>🎐 Admin sign-in</h1>
+<p>Enter the <code>ADMIN_TOKEN</code> configured on the server.</p>
+<form id="f">
+  <input type="password" id="token" placeholder="Admin token" autofocus>
+  <button type="submit">Continue</button>
+</form>
+<script>
+document.getElementById("f").onsubmit = (e) => {
+  e.preventDefault();
+  const t = document.getElementById("token").value;
+  if (t) window.location.href = "/admin?token=" + encodeURIComponent(t);
+};
+</script>
+</body>
+</html>
+"""
 
 _HTML = """<!doctype html>
 <html>
