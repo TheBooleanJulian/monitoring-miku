@@ -20,6 +20,7 @@ import asyncio
 import logging
 import signal
 import sys
+from urllib.parse import urlparse
 
 from telegram import BotCommand
 from telegram.ext import Application, CommandHandler
@@ -41,6 +42,7 @@ from handlers.commits import commits_command
 from handlers.incidents import incidents_command
 from monitor.health_monitor import start_health_monitor
 from services.zeabur import validate_token as validate_zeabur_token
+from services.tls_diag import diagnose_tls
 
 setup_logging()
 log = logging.getLogger(__name__)
@@ -123,6 +125,10 @@ async def _startup_checks() -> None:
         await validate_zeabur_token()
     except RuntimeError as e:
         log.warning(f"[main] Zeabur validation: {e} — Zeabur calls will error at runtime")
+        if "ssl" in str(e).lower() or "certificate" in str(e).lower():
+            host = urlparse(config.ZEABUR_GRAPHQL_URL).hostname
+            if host:
+                await asyncio.get_running_loop().run_in_executor(None, diagnose_tls, host)
     log.info("[main] Startup checks done")
 
 
