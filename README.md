@@ -72,7 +72,7 @@ python main.py
 | `ADMIN_TOKEN` | ✅ | Guards the `/admin` discovery-config page. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
 | `REGISTRY_REFRESH_INTERVAL` |  | Seconds between auto-discovery re-scans. Default `1800` (30 min). Run `/refresh_registry` in chat to re-scan immediately after deploying a new bot. |
 
-Which Zeabur projects to scan and which discovered services to exclude is configured at **`https://<your-deployment>/admin?token=<ADMIN_TOKEN>`** — check the projects you want scanned, untick any non-bot services (databases, monitoring-miku itself, repo-tracker, etc), and hit save. It re-runs discovery immediately.
+Which Zeabur projects to scan and which discovered services to exclude is configured at **`https://<your-deployment>/admin`** — sign in with `ADMIN_TOKEN` (sets a session cookie; the token itself never appears in a URL, so it can't leak into logs or browser history), check the projects you want scanned, untick any non-bot services (databases, monitoring-miku itself, repo-tracker, etc), and hit save. It re-runs discovery immediately.
 
 > Migrating from an older deployment? The old `ZEABUR_PROJECT_IDS` / `ZEABUR_EXCLUDED_SERVICE_IDS` CSV env vars are still read once, only to seed the admin page's config on first startup if it's empty — after that they're ignored and `/admin` is authoritative.
 

@@ -5,8 +5,12 @@ etc), instead of hand-editing ZEABUR_PROJECT_IDS / ZEABUR_EXCLUDED_SERVICE_IDS
 as CSV env vars.
 
 Mounted onto the existing aiohttp health server (health_server.py) so it needs
-no separate process or port. Guarded by config.ADMIN_TOKEN — every route here
-requires it, either as ?token=... (page load) or header X-Admin-Token (API calls).
+no separate process or port. Guarded by config.ADMIN_TOKEN via a session
+cookie, set once at login (POST /admin/login) and never put in a URL — aiohttp
+(and any proxy/CDN in front of it) logs the request line by default, so a
+token passed as ?token=... in a GET would leak into deploy logs, browser
+history, and Referer headers. The cookie is HttpOnly + Secure + SameSite=Strict
+so it's invisible to page JS and never sent cross-site.
 """
 
 import hmac
@@ -22,17 +26,19 @@ from services import zeabur
 
 log = logging.getLogger(__name__)
 
+_COOKIE_NAME = "admin_session"
+_COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+
 
 def _token_ok(token: str | None) -> bool:
     return bool(config.ADMIN_TOKEN) and bool(token) and hmac.compare_digest(token, config.ADMIN_TOKEN)
 
 
-def _require_token(request: web.Request) -> str | None:
-    """Returns an error response if the token is missing/wrong/disabled, else None."""
+def _require_session(request: web.Request) -> str | None:
+    """Returns an error response if the session cookie is missing/wrong/disabled, else None."""
     if not config.ADMIN_TOKEN:
         return web.json_response({"error": "ADMIN_TOKEN not configured on the server"}, status=503)
-    token = request.headers.get("X-Admin-Token") or request.query.get("token")
-    if not _token_ok(token):
+    if not _token_ok(request.cookies.get(_COOKIE_NAME)):
         return web.json_response({"error": "unauthorized"}, status=401)
     return None
 
@@ -40,14 +46,37 @@ def _require_token(request: web.Request) -> str | None:
 async def _page(request: web.Request) -> web.Response:
     if not config.ADMIN_TOKEN:
         return web.Response(text="ADMIN_TOKEN not configured on the server.", status=503)
-    token = request.query.get("token")
+    if not _token_ok(request.cookies.get(_COOKIE_NAME)):
+        return web.Response(text=_LOGIN_HTML.replace("__ERROR__", ""), content_type="text/html", status=401)
+    return web.Response(text=_HTML, content_type="text/html")
+
+
+async def _login(request: web.Request) -> web.Response:
+    """POST so the token travels in the body, never a logged URL. Sets the
+    session cookie and redirects — no token in the redirect target either."""
+    if not config.ADMIN_TOKEN:
+        return web.Response(text="ADMIN_TOKEN not configured on the server.", status=503)
+    form = await request.post()
+    token = form.get("token", "")
     if not _token_ok(token):
-        return web.Response(text=_LOGIN_HTML, content_type="text/html", status=401)
-    return web.Response(text=_HTML.replace("__TOKEN__", json.dumps(token)), content_type="text/html")
+        return web.Response(text=_LOGIN_HTML.replace("__ERROR__", "Incorrect token."), content_type="text/html", status=401)
+
+    resp = web.HTTPFound("/admin")
+    resp.set_cookie(
+        _COOKIE_NAME, token,
+        max_age=_COOKIE_MAX_AGE, httponly=True, secure=True, samesite="Strict",
+    )
+    return resp
+
+
+async def _logout(request: web.Request) -> web.Response:
+    resp = web.HTTPFound("/admin")
+    resp.del_cookie(_COOKIE_NAME)
+    return resp
 
 
 async def _api_projects(request: web.Request) -> web.Response:
-    if (err := _require_token(request)) is not None:
+    if (err := _require_session(request)) is not None:
         return err
     try:
         projects = await zeabur.list_projects()
@@ -58,7 +87,7 @@ async def _api_projects(request: web.Request) -> web.Response:
 
 
 async def _api_services(request: web.Request) -> web.Response:
-    if (err := _require_token(request)) is not None:
+    if (err := _require_session(request)) is not None:
         return err
     raw_ids = request.query.get("project_ids", "")
     project_ids = [p.strip() for p in raw_ids.split(",") if p.strip()]
@@ -73,13 +102,13 @@ async def _api_services(request: web.Request) -> web.Response:
 
 
 async def _api_get_config(request: web.Request) -> web.Response:
-    if (err := _require_token(request)) is not None:
+    if (err := _require_session(request)) is not None:
         return err
     return web.json_response(admin_config.get_config())
 
 
 async def _api_set_config(request: web.Request) -> web.Response:
-    if (err := _require_token(request)) is not None:
+    if (err := _require_session(request)) is not None:
         return err
     try:
         body = await request.json()
@@ -105,6 +134,8 @@ async def _api_set_config(request: web.Request) -> web.Response:
 
 def add_admin_routes(app: web.Application) -> None:
     app.router.add_get("/admin", _page)
+    app.router.add_post("/admin/login", _login)
+    app.router.add_get("/admin/logout", _logout)
     app.router.add_get("/admin/api/projects", _api_projects)
     app.router.add_get("/admin/api/services", _api_services)
     app.router.add_get("/admin/api/config", _api_get_config)
@@ -122,22 +153,17 @@ _LOGIN_HTML = """<!doctype html>
   body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 420px; margin: 4rem auto; padding: 0 1rem; }
   input { width: 100%; padding: 0.55rem; border-radius: 6px; border: 1px solid #8886; box-sizing: border-box; margin: 0.5rem 0; }
   button { padding: 0.55rem 1.1rem; border-radius: 6px; border: none; background: #5b5bd6; color: white; font-size: 0.95rem; cursor: pointer; }
+  .error { color: #e74c3c; font-size: 0.9rem; }
 </style>
 </head>
 <body>
 <h1>🎐 Admin sign-in</h1>
 <p>Enter the <code>ADMIN_TOKEN</code> configured on the server.</p>
-<form id="f">
-  <input type="password" id="token" placeholder="Admin token" autofocus>
+<p class="error">__ERROR__</p>
+<form method="post" action="/admin/login">
+  <input type="password" name="token" placeholder="Admin token" autofocus>
   <button type="submit">Continue</button>
 </form>
-<script>
-document.getElementById("f").onsubmit = (e) => {
-  e.preventDefault();
-  const t = document.getElementById("token").value;
-  if (t) window.location.href = "/admin?token=" + encodeURIComponent(t);
-};
-</script>
 </body>
 </html>
 """
@@ -161,10 +187,11 @@ _HTML = """<!doctype html>
   button:disabled { opacity: 0.5; cursor: default; }
   #status { margin-top: 1rem; font-size: 0.9rem; }
   code { background: #8882; padding: 0.1rem 0.3rem; border-radius: 4px; }
+  a.logout { font-size: 0.85rem; opacity: 0.65; }
 </style>
 </head>
 <body>
-<h1>🎐 MonitoringMiku — Discovery Config</h1>
+<h1>🎐 MonitoringMiku — Discovery Config <a class="logout" href="/admin/logout">sign out</a></h1>
 <p class="muted">Pick which Zeabur projects to scan for bots, then uncheck any discovered services that aren't bots (databases, this service itself, etc).</p>
 
 <h2>Projects to scan</h2>
@@ -177,12 +204,11 @@ _HTML = """<!doctype html>
 <div id="status"></div>
 
 <script>
-const TOKEN = __TOKEN__;
-
 async function api(path, opts) {
   opts = opts || {};
-  opts.headers = Object.assign({"X-Admin-Token": TOKEN}, opts.headers || {});
+  opts.credentials = "same-origin";
   const res = await fetch(path, opts);
+  if (res.status === 401) { window.location.href = "/admin"; throw new Error("session expired"); }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
@@ -193,8 +219,8 @@ let excludedServices = new Set();
 
 async function init() {
   const [{project_ids, excluded_service_ids}, {projects}] = await Promise.all([
-    api("/admin/api/config?token=" + encodeURIComponent(TOKEN)),
-    api("/admin/api/projects?token=" + encodeURIComponent(TOKEN)),
+    api("/admin/api/config"),
+    api("/admin/api/projects"),
   ]);
   selectedProjects = new Set(project_ids);
   excludedServices = new Set(excluded_service_ids);
@@ -239,7 +265,7 @@ async function loadServices() {
   el.className = "card muted";
   el.textContent = "Loading…";
   const ids = Array.from(selectedProjects).join(",");
-  const {services} = await api("/admin/api/services?token=" + encodeURIComponent(TOKEN) + "&project_ids=" + encodeURIComponent(ids));
+  const {services} = await api("/admin/api/services?project_ids=" + encodeURIComponent(ids));
   el.className = "card";
   el.innerHTML = "";
   if (!services.length) { el.textContent = "No services found in the selected project(s)."; return; }
@@ -270,7 +296,7 @@ document.getElementById("save").onclick = async () => {
   btn.disabled = true;
   statusEl.textContent = "Saving…";
   try {
-    const data = await api("/admin/api/config?token=" + encodeURIComponent(TOKEN), {
+    const data = await api("/admin/api/config", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({

@@ -54,9 +54,10 @@ ZEABUR_PROJECT_IDS: list[str] = [p.strip() for p in _raw_project_ids.split(",") 
 _raw_excluded_ids = os.getenv("ZEABUR_EXCLUDED_SERVICE_IDS", "")
 ZEABUR_EXCLUDED_SERVICE_IDS: set[str] = {s.strip() for s in _raw_excluded_ids.split(",") if s.strip()}
 
-# Bearer token guarding the /admin page and its API (GET /admin?token=..., or
-# header X-Admin-Token). Required to use the discovery-config UI; generate any
-# long random string, e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+# Bearer token guarding the /admin page and its API — sign in at /admin with
+# this value, which sets a session cookie (never appears in a URL/log).
+# Generate any long random string, e.g.
+# `python -c "import secrets; print(secrets.token_urlsafe(32))"`
 ADMIN_TOKEN: str = os.getenv("ADMIN_TOKEN", "")
 
 # ── GitHub ───────────────────────────────────────────────────────────────────

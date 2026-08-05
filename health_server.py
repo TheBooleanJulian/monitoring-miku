@@ -9,7 +9,9 @@ MonitoringMiku itself — the watcher needs watching too.
   GET /        → public landing page — fleet status + a link to /admin
 
 Also mounts the admin discovery-config UI (see admin_ui.py):
-  GET  /admin?token=...           → HTML page for picking Zeabur projects/services
+  GET  /admin                     → HTML page for picking Zeabur projects/services
+  POST /admin/login               → sign in with ADMIN_TOKEN, sets session cookie
+  GET  /admin/logout              → clears the session cookie
   GET  /admin/api/projects        → list Zeabur projects
   GET  /admin/api/services        → list services in selected projects
   GET  /admin/api/config          → current discovery config
