@@ -25,6 +25,7 @@ from telegram import BotCommand
 from telegram.ext import Application, CommandHandler
 
 import config
+import bot_registry
 from logging_setup import setup_logging
 from middleware.auth import community_filter, owner_filter
 from middleware.error_boundary import global_error_handler, error_boundary
@@ -35,7 +36,7 @@ from handlers.help import start_command, help_command
 from handlers.status import status_command
 from handlers.logs import logs_command
 from handlers.debug import debug_command
-from handlers.ops import restart_command, deploy_command
+from handlers.ops import restart_command, deploy_command, refresh_registry_command
 from handlers.commits import commits_command
 from handlers.incidents import incidents_command
 from monitor.health_monitor import start_health_monitor
@@ -66,9 +67,10 @@ _COMMUNITY_COMMANDS = [
 ]
 
 _OWNER_COMMANDS = [
-    ("debug",   debug_command,   "debug"),    # Claude API — rate limited 1/15s
-    ("restart", restart_command, "restart"),  # Zeabur restart — rate limited 2/30s
-    ("deploy",  deploy_command,  "deploy"),   # Zeabur redeploy — rate limited 1/60s
+    ("debug",            debug_command,            "debug"),    # Claude API — rate limited 1/15s
+    ("restart",          restart_command,           "restart"),  # Zeabur restart — rate limited 2/30s
+    ("deploy",           deploy_command,            "deploy"),   # Zeabur redeploy — rate limited 1/60s
+    ("refresh_registry", refresh_registry_command,  "refresh_registry"),  # re-run bot auto-discovery now
 ]
 
 
@@ -81,6 +83,7 @@ async def _set_commands(app: Application) -> None:
         BotCommand("restart",   "Hot-restart a service — /restart <bot>"),
         BotCommand("deploy",    "Full redeploy — /deploy <bot>"),
         BotCommand("incidents", "Show tracked incident state"),
+        BotCommand("refresh_registry", "Re-run bot auto-discovery now"),
         BotCommand("help",      "Show all commands"),
     ])
     log.info("[main] Bot command menu registered")
@@ -123,6 +126,17 @@ async def _startup_checks() -> None:
     log.info("[main] Startup checks done")
 
 
+async def _load_bot_registry() -> None:
+    """Loads the cached fleet immediately, then refreshes from Zeabur/GitHub.
+    Refresh failures are non-fatal — the bot keeps serving the cached registry."""
+    bot_registry.load_cached_registry()
+    try:
+        count = await bot_registry.refresh_registry()
+        log.info(f"[main] Bot registry discovered {count} bot(s)")
+    except Exception as e:
+        log.warning(f"[main] Bot registry refresh failed, using cached data: {e}")
+
+
 async def _run() -> None:
     """
     Main async coroutine. Runs Telegram polling, health HTTP server,
@@ -134,9 +148,18 @@ async def _run() -> None:
         sys.exit(1)
 
     await _startup_checks()
+    await _load_bot_registry()
 
     app = build_app()
     scheduler = start_health_monitor(app)
+    scheduler.add_job(
+        bot_registry.refresh_registry,
+        trigger="interval",
+        seconds=config.REGISTRY_REFRESH_INTERVAL_SECONDS,
+        id="registry_refresh",
+        name="Bot registry auto-discovery",
+        misfire_grace_time=60,
+    )
     health_runner = await start_health_server()
 
     # ── Signal handling ───────────────────────────────────────────────────────

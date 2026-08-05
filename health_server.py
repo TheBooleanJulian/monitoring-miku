@@ -7,6 +7,13 @@ MonitoringMiku itself — the watcher needs watching too.
   GET /health  → 200 { "status": "ok", "uptime_seconds": N }
   GET /status  → 200 { "bots": [ { "key", "name", "status", "down_since" } ] }
 
+Also mounts the admin discovery-config UI (see admin_ui.py):
+  GET  /admin?token=...           → HTML page for picking Zeabur projects/services
+  GET  /admin/api/projects        → list Zeabur projects
+  GET  /admin/api/services        → list services in selected projects
+  GET  /admin/api/config          → current discovery config
+  POST /admin/api/config          → save config + refresh bot registry
+
 Port is controlled by HEALTH_SERVER_PORT env var (default 8080).
 Zeabur expects the app to bind on the PORT env var — set HEALTH_SERVER_PORT=8080
 and expose port 8080 in your Zeabur service settings.
@@ -21,6 +28,7 @@ from aiohttp import web
 from config import HEALTH_SERVER_PORT
 from bot_registry import all_bots
 from monitor.health_monitor import _get_state
+from admin_ui import add_admin_routes
 
 log = logging.getLogger(__name__)
 _start_time = time.time()
@@ -67,6 +75,7 @@ def _build_app() -> web.Application:
     app = web.Application()
     app.router.add_get("/health", _health)
     app.router.add_get("/status", _status)
+    add_admin_routes(app)
     return app
 
 

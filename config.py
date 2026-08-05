@@ -44,17 +44,20 @@ HEALTH_SERVER_PORT: int = _int_env("PORT", os.getenv("HEALTH_SERVER_PORT", "8080
 ZEABUR_API_TOKEN: str = os.getenv("ZEABUR_API_TOKEN", "")
 ZEABUR_GRAPHQL_URL: str = "https://gateway.zeabur.com/graphql"
 
-# Comma-separated Zeabur project IDs to scan for bot auto-discovery.
-# Every service found in these projects is treated as a monitored bot
-# UNLESS its service ID is listed in ZEABUR_EXCLUDED_SERVICE_IDS below.
+# Legacy one-time seed only — real config now lives in admin_config.py (SQLite),
+# editable from the /admin web page. These two vars are read once, on first
+# startup with an empty discovery_config table, to migrate existing deployments;
+# after that the admin page is authoritative and these are ignored.
 _raw_project_ids = os.getenv("ZEABUR_PROJECT_IDS", "")
 ZEABUR_PROJECT_IDS: list[str] = [p.strip() for p in _raw_project_ids.split(",") if p.strip()]
 
-# Comma-separated Zeabur service IDs to exclude from auto-discovery
-# (databases, monitoring-miku itself, repo-tracker, or any other non-bot service
-# sharing a tracked project). This list should stay short — new bots need no entry.
 _raw_excluded_ids = os.getenv("ZEABUR_EXCLUDED_SERVICE_IDS", "")
 ZEABUR_EXCLUDED_SERVICE_IDS: set[str] = {s.strip() for s in _raw_excluded_ids.split(",") if s.strip()}
+
+# Bearer token guarding the /admin page and its API (GET /admin?token=..., or
+# header X-Admin-Token). Required to use the discovery-config UI; generate any
+# long random string, e.g. `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+ADMIN_TOKEN: str = os.getenv("ADMIN_TOKEN", "")
 
 # ── GitHub ───────────────────────────────────────────────────────────────────
 # Fine-grained personal token with read access to your repos

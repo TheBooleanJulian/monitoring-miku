@@ -11,6 +11,31 @@ _HEADERS = {
 }
 
 
+async def list_repos() -> list[dict]:
+    """
+    Returns every repo under GITHUB_OWNER (a personal account, so this uses
+    /users/.../repos — not /orgs/.../repos) as [{ name, updated_at }, ...].
+    Paginates until an empty page. Used by bot_registry's auto-discovery to
+    best-effort match a Zeabur service to its GitHub repo.
+    """
+    repos = []
+    page = 1
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        while True:
+            resp = await client.get(
+                f"{_API}/users/{GITHUB_OWNER}/repos",
+                headers=_HEADERS,
+                params={"per_page": 100, "page": page},
+            )
+            resp.raise_for_status()
+            batch = resp.json()
+            if not batch:
+                break
+            repos.extend({"name": r["name"], "updated_at": r["updated_at"]} for r in batch)
+            page += 1
+    return repos
+
+
 async def get_recent_commits(repo: str, count: int = 5) -> list[dict]:
     """
     Returns the last `count` commits as simplified dicts:

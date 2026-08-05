@@ -9,6 +9,7 @@ playground with your API token and introspect the schema to confirm field names.
 Your service IDs are in Zeabur dashboard → service → Settings → Service ID.
 """
 
+import asyncio
 import logging
 import httpx
 from config import ZEABUR_API_TOKEN, ZEABUR_GRAPHQL_URL
@@ -131,6 +132,75 @@ async def redeploy_service(service_id: str) -> bool:
     """
     await _gql(mutation, {"serviceID": service_id})
     return True
+
+
+async def list_projects() -> list[dict]:
+    """
+    Returns every project visible to this API token as [{ id, name }, ...].
+    Used by the /admin page to let the owner pick which projects to scan for
+    bot auto-discovery, instead of hand-copying project IDs into an env var.
+    """
+    query = """
+    query GetProjects {
+      projects {
+        edges {
+          node {
+            id
+            name
+          }
+        }
+      }
+    }
+    """
+    data = await _gql(query, {})
+    edges = (data.get("projects") or {}).get("edges") or []
+    return [edge["node"] for edge in edges if edge.get("node")]
+
+
+async def list_project_services(project_id: str) -> list[dict]:
+    """
+    Returns every service in a Zeabur project as [{ id, name }, ...].
+    Used by bot_registry's auto-discovery — one call per tracked project.
+    """
+    query = """
+    query GetProjectServices($projectID: String!) {
+      project(id: $projectID) {
+        services {
+          edges {
+            node {
+              id
+              name
+            }
+          }
+        }
+      }
+    }
+    """
+    data = await _gql(query, {"projectID": project_id})
+    project = data.get("project") or {}
+    edges = (project.get("services") or {}).get("edges") or []
+    return [edge["node"] for edge in edges if edge.get("node")]
+
+
+async def list_all_services(project_ids: list[str]) -> list[dict]:
+    """
+    Fans out list_project_services across every configured project ID and
+    flattens the results, tagging each service with its project_id.
+    A single project failing to fetch (bad ID, permissions) logs a warning
+    and is skipped rather than failing the whole discovery run.
+    """
+    async def _one(pid: str) -> list[dict]:
+        try:
+            services = await list_project_services(pid)
+        except Exception as exc:
+            logging.getLogger(__name__).warning(f"[zeabur] Failed to list services for project {pid}: {exc}")
+            return []
+        for s in services:
+            s["project_id"] = pid
+        return services
+
+    results = await asyncio.gather(*(_one(pid) for pid in project_ids))
+    return [service for batch in results for service in batch]
 
 
 def format_log_lines(log_entries: list[dict]) -> list[str]:

@@ -17,11 +17,13 @@
 
 ## What it does
 
-MonitoringMiku is the ops layer for the TheBooleanJulian bot fleet. It watches four Zeabur-hosted services — **MiguQuest**, **Miku Monday**, **NAC Busker**, and **NASA APOD** — and surfaces their health, logs, and commit history directly in Telegram. When something breaks, it alerts you proactively and can invoke Claude AI to diagnose the failure from logs and recent commits. You can restart or redeploy any service without leaving the chat.
+MonitoringMiku is the ops layer for the TheBooleanJulian bot fleet. It **auto-discovers** every service across your tracked Zeabur projects — no hand-editing a bot list per new bot — and surfaces their health, logs, and commit history directly in Telegram. When something breaks, it alerts you proactively and can invoke Claude AI to diagnose the failure from logs and recent commits. You can restart or redeploy any service without leaving the chat.
 
 ## Features
 
-- `/status` — live Zeabur deployment health for all four bots at a glance
+- **Auto-discovered bot registry** — every service in your admin-selected Zeabur projects is a monitored bot unless excluded; `/refresh_registry` re-scans on demand, and it also re-scans every `REGISTRY_REFRESH_INTERVAL` seconds automatically
+- **`/admin` web page** — pick which Zeabur projects to scan and untick non-bot services (databases, monitoring-miku itself, etc), instead of hand-editing CSV env vars
+- `/status` — live Zeabur deployment health for the whole fleet at a glance
 - `/logs <bot>` — tail recent log lines; auto-sends as `.txt` if over Telegram's message limit
 - `/debug <bot>` — Claude AI root-cause analysis combining recent logs and commits
 - `/commits <bot>` — latest GitHub commits for any monitored repo
@@ -66,8 +68,14 @@ python main.py
 | `ZEABUR_API_TOKEN` | ✅ | Zeabur dashboard → Account → Developer |
 | `GITHUB_TOKEN` | ✅ | Fine-grained PAT with `Contents: read` on your repos |
 | `ANTHROPIC_API_KEY` | ✅ | console.anthropic.com |
+| `ADMIN_TOKEN` | ✅ | Guards the `/admin` discovery-config page. Generate with `python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `REGISTRY_REFRESH_INTERVAL` |  | Seconds between auto-discovery re-scans. Default `1800` (30 min). Run `/refresh_registry` in chat to re-scan immediately after deploying a new bot. |
 
-After setting env vars, open `bot_registry.py` and fill in the Zeabur service IDs for each monitored bot.
+Which Zeabur projects to scan and which discovered services to exclude is configured at **`https://<your-deployment>/admin?token=<ADMIN_TOKEN>`** — check the projects you want scanned, untick any non-bot services (databases, monitoring-miku itself, repo-tracker, etc), and hit save. It re-runs discovery immediately.
+
+> Migrating from an older deployment? The old `ZEABUR_PROJECT_IDS` / `ZEABUR_EXCLUDED_SERVICE_IDS` CSV env vars are still read once, only to seed the admin page's config on first startup if it's empty — after that they're ignored and `/admin` is authoritative.
+
+New bots need zero code changes — deploy them into a tracked project and they show up on the next refresh. Optional per-bot polish (custom emoji, description, or a `github_repo` override when name-matching doesn't land) can be set directly in the `registry_overrides` table in `monitor_state.db`.
 
 ## Project Structure
 
@@ -76,8 +84,10 @@ monitoring-miku/
 ├── main.py                  # Entry point — async lifecycle, signal handling, middleware wiring
 ├── config.py                # Env vars + startup validation
 ├── logging_setup.py         # Rotating file handler + stdout stream
-├── health_server.py         # aiohttp /health + /status endpoints
-├── bot_registry.py          # Monitored bots list + alias resolution
+├── health_server.py         # aiohttp /health + /status endpoints, mounts admin_ui
+├── admin_ui.py              # /admin web page — pick Zeabur projects/services to scan
+├── admin_config.py          # SQLite-backed discovery config (project_ids, excluded_service_ids)
+├── bot_registry.py          # Auto-discovered bot registry (Zeabur + GitHub, SQLite-cached)
 ├── middleware/
 │   ├── auth.py              # Owner/community filters
 │   ├── rate_limit.py        # Token-bucket rate limiting per command
