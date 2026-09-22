@@ -9,7 +9,7 @@
 ![SQLite](https://img.shields.io/badge/-SQLite-003B57?logo=sqlite&logoColor=white)
 ![Claude](https://img.shields.io/badge/-Claude%20API-D4A017)
 ![Zeabur](https://img.shields.io/badge/-Zeabur-6C5CE7)
-![License](https://img.shields.io/badge/license-MIT-00D4C8.svg)
+![License](https://img.shields.io/badge/license-AGPLv3%20%2B%20Commercial-00D4C8.svg)
 
 </div>
 
@@ -113,6 +113,10 @@ monitoring-miku/
 └── zeabur.json
 ```
 
+## Screenshots
+
+_Screenshots coming soon._ The repo includes a public landing page (`landing.py`) and an `/admin` configuration page (`admin_ui.py`), but no screenshots are checked into the repo yet.
+
 ## Deployment
 
 Deployed on Zeabur via GitHub CI/CD. Push to `main` triggers deploy. `zeabur.json` defines the service configuration. The bot runs in polling mode — no public IP or webhook required.
@@ -134,7 +138,10 @@ Deployed on Zeabur via GitHub CI/CD. Push to `main` triggers deploy. `zeabur.jso
 
 ## License
 
-MIT
+This project is dual licensed.
+
+- Community Edition — [GNU Affero General Public License v3 (AGPLv3)](LICENSE). Free to use, modify, and self-host. If you distribute a modified version or run it as a network service, you must make the corresponding source available.
+- Commercial License — for organisations that want to embed, modify, or distribute this software without AGPLv3's obligations. See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md).
 
 ---
 
